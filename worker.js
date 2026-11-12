@@ -34762,6 +34762,7 @@ async function step() {
       const end = Math.min(buf.length, (last + 1) * FRAME + Math.round(0.15 * SR));
       const text = await transcribe(buf.slice(0, end), true);
       dropFront(end);
+      console.log("[verse-catcher] heard", lastMs + "ms:", text);
       if (text) post({ type: "final", text, ms: lastMs });
       else post({ type: "interim", text: "", ms: lastMs });
     } else if (secs >= MAX_CHUNK) {
@@ -34805,8 +34806,42 @@ async function loop() {
   }
 }
 setInterval(loop, 150);
+var flushing = false;
+async function flush() {
+  flushing = true;
+  for (let i = 0; i < 600 && (pending.length >= FRAME || busy || looping); i++) {
+    await loop();
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  while (busy) await new Promise((r) => setTimeout(r, 50));
+  const last = lastSpeechFrame();
+  if (asr && last >= 0) {
+    busy = true;
+    try {
+      const end = Math.min(buf.length, (last + 1) * FRAME + Math.round(0.15 * SR));
+      const text = await transcribe(buf.slice(0, end), true);
+      if (text) post({ type: "final", text, ms: lastMs });
+    } catch (e) {
+    } finally {
+      busy = false;
+    }
+  }
+  buf = new Float32Array(0);
+  probs = [];
+  pending = new Float32Array(0);
+  flushing = false;
+  post({ type: "flushed" });
+}
 self.onmessage = (e) => {
   const m = e.data;
+  if (m.type === "flush") {
+    flush();
+    return;
+  }
+  if (m.type === "debug") {
+    post({ type: "debug", on: on2, ready: !!asr, busy, bufSec: +(buf.length / SR).toFixed(2), pendingSec: +(pending.length / SR).toFixed(2), maxProb: probs.length ? +Math.max(...probs).toFixed(2) : null, lastMs, vad: vad ? "silero" : "level", model });
+    return;
+  }
   if (m.type === "load") load(m.model, m.mock);
   else if (m.type === "start") {
     on2 = true;

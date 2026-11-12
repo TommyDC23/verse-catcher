@@ -396,6 +396,8 @@
         refreshStatus();
       } else if (m.type === 'progress') { wProgress = m; refreshStatus(); }
       else if (m.type === 'phase') { wPhase = m.text; refreshStatus(); }
+      else if (m.type === 'flushed') { if (playing && playing.ending) stopPlaying(true); }
+      else if (m.type === 'debug') { window.__vcDebug = m; }
       else if (m.type === 'error') { wError = m.message; wPhase = null; if (engine() === 'whisper') notice(m.message); refreshStatus(); }
       else if (m.type === 'final' || m.type === 'interim') {
         if (!(listening || playing) || engine() !== 'whisper') return;
@@ -445,10 +447,12 @@
       const n = 1600 * (+$('recSpeed').value || 1);           // 0.1 s of audio per tick at normal speed
       const chunk = pcm.slice(playing.pos, playing.pos + n);
       playing.pos += n;
-      if (!chunk.length) {                                      // end: a little silence lets the last sentence finish
-        sendPcm(new Float32Array(16000));
-        setTimeout(() => { if (playing && playing.pos >= pcm.length) stopPlaying(true); }, 4000);
+      if (!chunk.length) {                                      // end: let Whisper finish everything it has, then stop
         clearInterval(playing.timer);
+        playing.ending = true;
+        playing.label = 'finishing…';
+        refreshStatus();
+        worker.postMessage({ type: 'flush' });
         return;
       }
       levelOf(chunk);
@@ -702,7 +706,7 @@
   });
   window.addEventListener('beforeunload', () => { if (displayWin && !displayWin.closed) displayWin.close(); });
 
-  window.__vc = { det, quoteCheck, heardFinal, heardInterim, whisper: () => wInfo, playRecording, ready: () => !!qm, addHits, show, step, getLive: () => live, getQueue: () => queue };   // for testing
+  window.__vc = { det, quoteCheck, heardFinal, heardInterim, whisper: () => wInfo, playRecording, debug: () => { if (worker) worker.postMessage({ type: "debug" }); return window.__vcDebug; }, ready: () => !!qm, addHits, show, step, getLive: () => live, getQueue: () => queue };   // for testing
 })();
 </script>
 </body>
