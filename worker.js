@@ -34635,7 +34635,7 @@ async function detectGpu() {
   }
   return gpu;
 }
-async function load(name, useMock) {
+async function load(name, useMock, override) {
   if (loading) return;
   mock = !!useMock;
   const g = await detectGpu();
@@ -34671,11 +34671,12 @@ async function load(name, useMock) {
     }
     if (mock) asr = mockAsr();
     else {
-      const dtype = g.ok ? m.gpuOnly ? { encoder_model: "q4", decoder_model_merged: g.f16 ? "q4f16" : "q4" } : { encoder_model: g.f16 ? "fp16" : "fp32", decoder_model_merged: g.f16 ? "q4f16" : "q4" } : { encoder_model: "q8", decoder_model_merged: "q8" };
-      let next, dev = g.ok ? "webgpu" : "wasm";
+      const dtype = override && override.dtype ? override.dtype : g.ok ? m.gpuOnly ? { encoder_model: "q4", decoder_model_merged: g.f16 ? "q4f16" : "q4" } : { encoder_model: g.f16 ? "fp16" : "fp32", decoder_model_merged: g.f16 ? "q4f16" : "q4" } : { encoder_model: "q8", decoder_model_merged: "q8" };
+      let next, dev = override && override.device ? override.device : g.ok ? "webgpu" : "wasm";
+      if (dev === "wasm") gpu = { ok: false, f16: false };
       const t0 = performance.now();
       try {
-        next = await pipeline2("automatic-speech-recognition", m.repo, { device: dev, dtype, progress_callback });
+        next = await pipeline2("automatic-speech-recognition", override && override.repo || m.repo, { device: dev, dtype, progress_callback });
       } catch (err) {
         if (dev !== "webgpu" || m.gpuOnly) throw err;
         console.warn("[verse-catcher] graphics chip failed, using the processor instead:", err);
@@ -34842,8 +34843,18 @@ self.onmessage = (e) => {
     post({ type: "debug", on: on2, ready: !!asr, busy, bufSec: +(buf.length / SR).toFixed(2), pendingSec: +(pending.length / SR).toFixed(2), maxProb: probs.length ? +Math.max(...probs).toFixed(2) : null, lastMs, vad: vad ? "silero" : "level", model });
     return;
   }
-  if (m.type === "load") load(m.model, m.mock);
-  else if (m.type === "start") {
+  if (m.type === "load") load(m.model, m.mock, m.override);
+  else if (m.type === "bench") {
+    (async () => {
+      const t = performance.now();
+      try {
+        const out = await asr(m.pcm, m.opts || {});
+        post({ type: "bench", text: out.text, ms: Math.round(performance.now() - t) });
+      } catch (e2) {
+        post({ type: "bench", error: String(e2 && e2.message || e2), ms: Math.round(performance.now() - t) });
+      }
+    })();
+  } else if (m.type === "start") {
     on2 = true;
     buf = new Float32Array(0);
     probs = [];
