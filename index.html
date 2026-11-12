@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<script>window.coi = { shouldRegister: () => "credentialless" in HTMLIFrameElement.prototype, coepCredentialless: () => true, quiet: true };</script>
+<script src="coi-serviceworker.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Verse Catcher</title>
 <style>
@@ -71,10 +73,10 @@
   </select>
   <select id="mic" class="whisper-only" aria-label="Microphone"><option value="">Microphone: system default</option></select>
   <select id="model" class="whisper-only" aria-label="Whisper model" title="Bigger models hear better but need a stronger computer and a bigger first download">
-    <option value="tiny.en">Model: tiny (fastest, least accurate; ~40–120 MB)</option>
-    <option value="base.en">Model: base (recommended; ~80–210 MB)</option>
-    <option value="small.en">Model: small (more accurate, slower; ~250–590 MB)</option>
+    <option value="tiny.en">Model: tiny (fastest, least accurate; ~40 MB)</option>
+    <option value="base.en">Model: base (recommended; ~80 MB)</option>
   </select>
+  <label class="check whisper-only" title="Can be faster on computers with a strong graphics chip, but in testing it sometimes slowed down badly. Leave off unless the processor is too slow."><input type="checkbox" id="useGpu"> Use graphics chip (experimental)</label>
   <label class="check whisper-only" title="Turn on for a microphone in the room; leave off for a cable from the sound desk"><input type="checkbox" id="cleanup"> Reduce room noise</label>
   <select id="lang" class="browser-only" aria-label="Speech accent">
     <option value="en-NG">English (Nigeria)</option>
@@ -383,7 +385,7 @@
   let worker = null, wInfo = { ready: false, loading: null, model: null, device: null }, wProgress = null, wPhase = null, wError = null, audio = null, playing = null;
   function ensureWorker() {
     if (worker) return worker;
-    worker = new Worker('worker.js?v=7bfc7584', { type: 'module' });
+    worker = new Worker('worker.js?v=5cf64c10', { type: 'module' });
     worker.onmessage = (e) => {
       const m = e.data;
       if (m.type === 'status') {
@@ -406,7 +408,7 @@
         sp.hidden = false;
         sp.textContent = 'Whisper ' + (wInfo.model || '').replace('.en', '') + ' · ' + secs.toFixed(1) + ' s';
         sp.className = 'pill' + (secs > 2.5 ? ' err' : '');
-        sp.title = (wInfo.device === 'webgpu' ? 'Running on the graphics chip. ' : 'Running on the processor (no graphics chip available to the browser). ') +
+        sp.title = (wInfo.device === 'webgpu' ? 'Running on the graphics chip. ' : 'Running on the processor (' + (wInfo.threads || 1) + (wInfo.threads > 1 ? ' cores). ' : ' core). ')) +
           (secs > 2.5 ? 'This model is slow on this computer: choose a smaller one.' : 'Time Whisper took for the last piece of speech.');
       }
     };
@@ -417,7 +419,7 @@
     if (!canWhisper) return;
     wError = null;
     store.set('model', name);
-    ensureWorker().postMessage({ type: 'load', model: name, mock: MOCK });
+    ensureWorker().postMessage({ type: 'load', model: name, mock: MOCK, gpu: $('useGpu').checked });
   }
   function sendPcm(pcm) { if (worker && (listening || playing)) worker.postMessage({ type: 'audio', pcm }, [pcm.buffer]); }
 
@@ -614,8 +616,10 @@
   $('mic').onchange = () => { store.set('mic', $('mic').value); if (engine() === 'whisper') restartIfListening(); };
   $('cleanup').checked = store.get('cleanup', '0') === '1';
   $('cleanup').onchange = () => { store.set('cleanup', $('cleanup').checked ? '1' : '0'); if (engine() === 'whisper') restartIfListening(); };
-  $('model').value = ['tiny.en', 'base.en', 'small.en'].includes(store.get('model', '')) ? store.get('model', '') : 'base.en';
+  $('model').value = ['tiny.en', 'base.en'].includes(store.get('model', '')) ? store.get('model', '') : 'base.en';
   $('model').onchange = () => loadModel($('model').value);
+  $('useGpu').checked = store.get('gpu', '0') === '1';
+  $('useGpu').onchange = () => { store.set('gpu', $('useGpu').checked ? '1' : '0'); loadModel($('model').value); };
   if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) navigator.mediaDevices.addEventListener('devicechange', listDevices);
   listDevices();
   showEngineControls();

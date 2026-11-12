@@ -34602,6 +34602,7 @@ var MODELS = {
 env2.allowLocalModels = false;
 var ORT = new URL("./ort/", self.location.href).href;
 env2.backends.onnx.wasm.wasmPaths = { mjs: ORT + "ort-wasm-simd-threaded.asyncify.mjs", wasm: ORT + "ort-wasm-simd-threaded.asyncify.wasm" };
+if (self.crossOriginIsolated) env2.backends.onnx.wasm.numThreads = Math.max(2, Math.min(6, (self.navigator.hardwareConcurrency || 4) - 2));
 var asr = null;
 var vad = null;
 var vadState = null;
@@ -34635,10 +34636,13 @@ async function detectGpu() {
   }
   return gpu;
 }
-async function load(name, useMock, override) {
+var wantGpu = false;
+async function load(name, useMock, override, useGpu) {
   if (loading) return;
   mock = !!useMock;
-  const g = await detectGpu();
+  wantGpu = !!useGpu;
+  gpu = null;
+  const g = wantGpu ? await detectGpu() : gpu = { ok: false, f16: false };
   const m = MODELS[name] || MODELS["base.en"];
   if (m.gpuOnly && !g.ok) {
     post({ type: "error", message: "The large turbo model needs a graphics chip this browser can use (WebGPU). Choose small or base instead." });
@@ -34697,7 +34701,7 @@ async function load(name, useMock, override) {
     }
     model = name;
     loading = null;
-    post({ type: "status", ready: true, model, device: mock ? "mock" : gpu.ok ? "webgpu" : "wasm", f16: gpu.f16, vad: vad ? "silero" : "level" });
+    post({ type: "status", ready: true, model, device: mock ? "mock" : gpu.ok ? "webgpu" : "wasm", f16: gpu.f16, vad: vad ? "silero" : "level", threads: self.crossOriginIsolated ? env2.backends.onnx.wasm.numThreads : 1 });
   } catch (e) {
     loading = null;
     post({ type: "error", message: "Could not load the " + name + " model: " + (e && e.message || e) });
@@ -34846,7 +34850,7 @@ self.onmessage = (e) => {
     post({ type: "debug", on: on2, ready: !!asr, busy, bufSec: +(buf.length / SR).toFixed(2), pendingSec: +(pending.length / SR).toFixed(2), maxProb: probs.length ? +Math.max(...probs).toFixed(2) : null, lastMs, vad: vad ? "silero" : "level", model });
     return;
   }
-  if (m.type === "load") load(m.model, m.mock, m.override);
+  if (m.type === "load") load(m.model, m.mock, m.override, m.gpu);
   else if (m.type === "bench") {
     (async () => {
       const t = performance.now();
