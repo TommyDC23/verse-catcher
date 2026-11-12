@@ -34587,9 +34587,11 @@ var CONCRETE_DTYPES = Object.keys(DEFAULT_DTYPE_SUFFIX_MAPPING);
 // worker.js
 var SR = 16e3;
 var FRAME = 512;
-var PAUSE = 0.6;
-var MAX_CHUNK = 12;
-var CUT_FROM = 8;
+var PAUSE = 0.8;
+var MIN_SENTENCE = 2.5;
+var LONG_PAUSE = 2;
+var MAX_CHUNK = 14;
+var CUT_FROM = 9;
 var INTERIM_EVERY = 0.8;
 var KEEP_BEFORE = 0.3;
 var JUNK = /^\W*(thank you( very much)?|thanks for watching|please subscribe|subtitles? by.*|you|bye|music|applause|silence|\[.*\]|\(.*\)|\.+)\W*$/i;
@@ -34772,9 +34774,12 @@ async function step() {
     return;
   }
   const silent = (probs.length - 1 - last) * FRAME / SR;
+  const spoken = (last + 1) * FRAME / SR;
+  const finished = silent >= PAUSE && (spoken >= MIN_SENTENCE || silent >= LONG_PAUSE);
+  if (!finished && silent >= PAUSE && secs < MAX_CHUNK) return;
   busy = true;
   try {
-    if (silent >= PAUSE) {
+    if (finished) {
       const end = Math.min(buf.length, (last + 1) * FRAME + Math.round(0.15 * SR));
       const text = await transcribe(buf.slice(0, end), true);
       dropFront(end);

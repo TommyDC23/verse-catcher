@@ -87,7 +87,7 @@
   </select>
   <select id="mic" class="whisper-only" aria-label="Microphone"><option value="">Microphone: system default</option></select>
   <select id="model" class="whisper-only" aria-label="Whisper model" title="Bigger models hear better but need a stronger computer and a bigger first download">
-    <option value="tiny.en">Model: tiny (fastest, least accurate; ~40 MB)</option>
+    <option value="tiny.en">Model: tiny (not recommended: often mishears)</option>
     <option value="base.en">Model: base (recommended; ~80 MB)</option>
   </select>
   <label class="check whisper-only" title="Can be faster on computers with a strong graphics chip, but in testing it sometimes slowed down badly. Leave off unless the processor is too slow."><input type="checkbox" id="useGpu"> Use graphics chip (experimental)</label>
@@ -400,7 +400,7 @@
   let worker = null, wInfo = { ready: false, loading: null, model: null, device: null }, wProgress = null, wPhase = null, wError = null, audio = null, playing = null;
   function ensureWorker() {
     if (worker) return worker;
-    worker = new Worker('worker.js?v=e4d46ace', { type: 'module' });
+    worker = new Worker('worker.js?v=d9d66b1d', { type: 'module' });
     worker.onmessage = (e) => {
       const m = e.data;
       if (m.type === 'status') {
