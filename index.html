@@ -2,8 +2,22 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<script>window.coi = { shouldRegister: () => "credentialless" in HTMLIFrameElement.prototype, coepCredentialless: () => true, quiet: true };</script>
-<script src="coi-serviceworker.js"></script>
+<script>
+// sw.js keeps the site's files on this computer and turns on multi-core processing. The first time it is
+// installed, the page reloads once so it takes effect.
+(function () {
+  if (!('serviceWorker' in navigator) || !window.isSecureContext) return;
+  navigator.serviceWorker.register('sw.js').then(function () {
+    var canIsolate = 'credentialless' in HTMLIFrameElement.prototype;
+    if (canIsolate && !window.crossOriginIsolated) {
+      navigator.serviceWorker.ready.then(function () {
+        try { if (sessionStorage.getItem('vc.reloaded')) return; sessionStorage.setItem('vc.reloaded', '1'); } catch (e) { return; }
+        location.reload();
+      });
+    }
+  }).catch(function () {});
+})();
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Verse Catcher</title>
 <style>
@@ -103,6 +117,7 @@
   <span style="color:var(--dim)">API.Bible key</span>
   <input type="password" id="apikey" placeholder="Paste your API.Bible key" autocomplete="off" style="width:280px">
   <button class="btn" id="apiSave">Connect</button>
+  <button class="btn" id="apiLink" title="A link that sets up the online Bibles on another computer in one tap. Share it privately.">Copy setup link</button>
   <span id="apiStatus" style="color:var(--dim)"></span>
 </div>
 <div id="notice"></div>
@@ -134,7 +149,7 @@
 <script src="detector.js?v=3d30f8f4"></script>
 <script src="matcher.js?v=459d2976"></script>
 <script src="data/kjv.js?v=e2fea996"></script>
-<script src="data/versions.js?v=580b39f9"></script>
+<script>const VERSIONS = {"order": ["KJV", "BSB", "NHEB", "AKJV", "ASV", "YLT"], "names": {"KJV": "King James Version", "BSB": "Berean Standard Bible", "NHEB": "New Heart English Bible", "AKJV": "American King James Version", "ASV": "American Standard Version (1901)", "YLT": "Young's Literal Translation"}, "text": {}};</script>
 <script>
 (function () {
   const $ = (id) => document.getElementById(id);
@@ -385,7 +400,7 @@
   let worker = null, wInfo = { ready: false, loading: null, model: null, device: null }, wProgress = null, wPhase = null, wError = null, audio = null, playing = null;
   function ensureWorker() {
     if (worker) return worker;
-    worker = new Worker('worker.js?v=5cf64c10', { type: 'module' });
+    worker = new Worker('worker.js?v=e4d46ace', { type: 'module' });
     worker.onmessage = (e) => {
       const m = e.data;
       if (m.type === 'status') {
@@ -619,7 +634,7 @@
   $('model').value = ['tiny.en', 'base.en'].includes(store.get('model', '')) ? store.get('model', '') : 'base.en';
   $('model').onchange = () => loadModel($('model').value);
   $('useGpu').checked = store.get('gpu', '0') === '1';
-  $('useGpu').onchange = () => { store.set('gpu', $('useGpu').checked ? '1' : '0'); loadModel($('model').value); };
+  $('useGpu').onchange = () => { store.set('gpu', $('useGpu').checked ? '1' : '0'); location.reload(); };   // the engine is chosen once per page
   if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) navigator.mediaDevices.addEventListener('devicechange', listDevices);
   listDevices();
   showEngineControls();
@@ -628,7 +643,27 @@
   $('lang').onchange = () => { store.set('lang', $('lang').value); if (engine() === 'browser') restartIfListening(); };
   $('quotes').value = store.get('quotes', 'balanced');
   $('quotes').onchange = () => store.set('quotes', $('quotes').value);
-  setTimeout(() => { const ex = {}; QUOTE_VERSIONS.forEach((v) => { ex[v] = VERSIONS.text[v]; }); qm = createMatcher(BIBLE, ex); }, 50);
+  // Translations besides the KJV load in the background. Quotes are matched against the KJV straight away,
+  // and also against the BSB and NHEB wording once those arrive.
+  const versionFiles = {"BSB": "data/v-BSB.js?v=10df7d34", "NHEB": "data/v-NHEB.js?v=dcd2a0c9", "AKJV": "data/v-AKJV.js?v=5cceda9a", "ASV": "data/v-ASV.js?v=f6efaf16", "YLT": "data/v-YLT.js?v=8d301366"};
+  const versionLoads = {};
+  window.VC_VERSION = (code, books) => { VERSIONS.text[code] = books; };
+  function loadVersion(code) {
+    if (!versionFiles[code] || VERSIONS.text[code]) return Promise.resolve();
+    if (!versionLoads[code]) versionLoads[code] = new Promise((resolve) => {
+      const s = document.createElement('script');
+      s.src = versionFiles[code]; s.async = true;
+      s.onload = resolve; s.onerror = () => { delete versionLoads[code]; resolve(); };
+      document.head.appendChild(s);
+    });
+    return versionLoads[code];
+  }
+  setTimeout(() => { if (!qm) qm = createMatcher(BIBLE); }, 50);
+  Promise.all(QUOTE_VERSIONS.map(loadVersion)).then(() => setTimeout(() => {
+    const ex = {};
+    QUOTE_VERSIONS.forEach((v) => { if (VERSIONS.text[v]) ex[v] = VERSIONS.text[v]; });
+    qm = createMatcher(BIBLE, ex);
+  }, 300));
   function fillVersions() {
     const sel = $('version');
     sel.innerHTML = '';
@@ -638,7 +673,8 @@
   }
   version = store.get('version', 'KJV');
   fillVersions();
-  $('version').onchange = () => { version = $('version').value; store.set('version', version); if (live) live.fallback = false; renderQueue(); };
+  $('version').onchange = () => { version = $('version').value; store.set('version', version); if (live) live.fallback = false; renderQueue(); loadVersion(version).then(() => { render(); renderQueue(); }); };
+  loadVersion(version).then(() => { render(); renderQueue(); });
 
   // API.Bible asks every web app to report which verses are shown (its Fair Use Management System).
   function fumsReport(token) {
@@ -682,8 +718,20 @@
   $('onlineBtn').onclick = () => { $('onlineRow').hidden = !$('onlineRow').hidden; if (!$('onlineRow').hidden) $('apikey').focus(); };
   $('apiSave').onclick = () => connectOnline(false);
   $('apikey').addEventListener('keydown', (e) => { if (e.key === 'Enter') connectOnline(false); e.stopPropagation(); });
+  const setupKey = (location.hash.match(/^#setup=([A-Za-z0-9_-]{8,})$/) || [])[1];
+  if (setupKey) {
+    store.set('apikey', setupKey);
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+  $('apiLink').onclick = async () => {
+    const key = $('apikey').value.trim() || store.get('apikey', '');
+    if (!key) { $('apiStatus').textContent = 'Paste the key and press Connect first.'; return; }
+    const link = location.origin + location.pathname + '#setup=' + key;
+    try { await navigator.clipboard.writeText(link); $('apiStatus').textContent = 'Setup link copied. Send it privately (it contains your key): opening it once on a computer sets up the online Bibles there for good.'; }
+    catch (e) { $('apiStatus').textContent = 'Copy this setup link and send it privately: ' + link; }
+  };
   $('apikey').value = store.get('apikey', '');
-  if ($('apikey').value) connectOnline(true);
+  if ($('apikey').value) connectOnline(true).then(() => { if (setupKey && Object.keys(online).length) { $('onlineRow').hidden = false; $('apiStatus').textContent = 'Online Bibles are now set up on this computer (' + Object.keys(online).join(', ') + '). You will not need the key here again.'; } });
   $('auto').checked = store.get('auto', '0') === '1';
   $('auto').onchange = () => store.set('auto', $('auto').checked ? '1' : '0');
   $('openBtn').onclick = openDisplay;

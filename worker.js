@@ -34601,7 +34601,11 @@ var MODELS = {
 };
 env2.allowLocalModels = false;
 var ORT = new URL("./ort/", self.location.href).href;
-env2.backends.onnx.wasm.wasmPaths = { mjs: ORT + "ort-wasm-simd-threaded.asyncify.mjs", wasm: ORT + "ort-wasm-simd-threaded.asyncify.wasm" };
+var enginePaths = (gpu2) => {
+  const f = gpu2 ? "ort-wasm-simd-threaded.asyncify" : "ort-wasm-simd-threaded";
+  return { mjs: ORT + f + ".mjs", wasm: ORT + f + ".wasm" };
+};
+var engineChosen = false;
 if (self.crossOriginIsolated) env2.backends.onnx.wasm.numThreads = Math.max(2, Math.min(6, (self.navigator.hardwareConcurrency || 4) - 2));
 var asr = null;
 var vad = null;
@@ -34642,6 +34646,10 @@ async function load(name, useMock, override, useGpu) {
   mock = !!useMock;
   wantGpu = !!useGpu;
   gpu = null;
+  if (!engineChosen) {
+    env2.backends.onnx.wasm.wasmPaths = enginePaths(wantGpu);
+    engineChosen = true;
+  }
   const g = wantGpu ? await detectGpu() : gpu = { ok: false, f16: false };
   const m = MODELS[name] || MODELS["base.en"];
   if (m.gpuOnly && !g.ok) {
