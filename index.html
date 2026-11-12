@@ -130,10 +130,10 @@
   </section>
 </main>
 
-<script src="detector.js"></script>
-<script src="matcher.js"></script>
-<script src="data/kjv.js"></script>
-<script src="data/versions.js"></script>
+<script src="detector.js?v=3d30f8f4"></script>
+<script src="matcher.js?v=459d2976"></script>
+<script src="data/kjv.js?v=e2fea996"></script>
+<script src="data/versions.js?v=580b39f9"></script>
 <script>
 (function () {
   const $ = (id) => document.getElementById(id);
@@ -384,7 +384,7 @@
   let worker = null, wInfo = { ready: false, loading: null, model: null, device: null }, wProgress = null, wPhase = null, wError = null, audio = null, playing = null;
   function ensureWorker() {
     if (worker) return worker;
-    worker = new Worker('worker.js', { type: 'module' });
+    worker = new Worker('worker.js?v=14333637', { type: 'module' });
     worker.onmessage = (e) => {
       const m = e.data;
       if (m.type === 'status') {
