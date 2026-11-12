@@ -358,6 +358,7 @@
       if (wError && !wInfo.ready) return setStatus('Model failed to load', 'err');
       if (wInfo.loading) {
         const p = wProgress;
+        if (wPhase) return setStatus(wPhase);
         return setStatus(p && p.totalMb ? 'Downloading ' + wInfo.loading.replace('.en', '') + ' model: ' + p.pct + '% of ' + p.totalMb + ' MB (first time only)' : 'Loading ' + wInfo.loading.replace('.en', '') + ' model…');
       }
       if (!wInfo.ready) return setStatus('Whisper not loaded yet');
@@ -380,7 +381,7 @@
   // ---------- engine 1: Whisper running inside this browser (worker.js) ----------
   const canWhisper = typeof Worker !== 'undefined' && typeof WebAssembly !== 'undefined';
   const MOCK = /[?&]mock\b/.test(location.search);           // test mode: a stand-in replaces the real model
-  let worker = null, wInfo = { ready: false, loading: null, model: null, device: null }, wProgress = null, wError = null, audio = null, playing = null;
+  let worker = null, wInfo = { ready: false, loading: null, model: null, device: null }, wProgress = null, wPhase = null, wError = null, audio = null, playing = null;
   function ensureWorker() {
     if (worker) return worker;
     worker = new Worker('worker.js', { type: 'module' });
@@ -389,11 +390,13 @@
       if (m.type === 'status') {
         Object.assign(wInfo, m);
         if (!m.loading) wInfo.loading = null;
-        if (m.ready) { wProgress = null; wError = null; notice(''); }
+        if (m.ready) { wProgress = null; wPhase = null; wError = null; notice(''); }
+        if (m.loading) wPhase = null;
         if (m.model && !m.loading) $('model').value = m.model;
         refreshStatus();
       } else if (m.type === 'progress') { wProgress = m; refreshStatus(); }
-      else if (m.type === 'error') { wError = m.message; if (engine() === 'whisper') notice(m.message); refreshStatus(); }
+      else if (m.type === 'phase') { wPhase = m.text; refreshStatus(); }
+      else if (m.type === 'error') { wError = m.message; wPhase = null; if (engine() === 'whisper') notice(m.message); refreshStatus(); }
       else if (m.type === 'final' || m.type === 'interim') {
         if (!(listening || playing) || engine() !== 'whisper') return;
         if (m.type === 'final') heardFinal(m.text); else if (m.text) heardInterim(m.text);

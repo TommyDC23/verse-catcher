@@ -34656,6 +34656,7 @@ async function load(name, useMock) {
         t += f.total;
       });
       if (t) post({ type: "progress", pct: Math.round(100 * l / t), mb: Math.round(l / 1e6), totalMb: Math.round(t / 1e6) });
+      if (t && l >= t) post({ type: "phase", text: "Preparing the model" + (gpu && gpu.ok ? " on the graphics chip" : "") + " (the first time can take a minute or two)\u2026" });
     }
   };
   try {
@@ -34671,8 +34672,22 @@ async function load(name, useMock) {
     if (mock) asr = mockAsr();
     else {
       const dtype = g.ok ? m.gpuOnly ? { encoder_model: "q4", decoder_model_merged: g.f16 ? "q4f16" : "q4" } : { encoder_model: g.f16 ? "fp16" : "fp32", decoder_model_merged: g.f16 ? "q4f16" : "q4" } : { encoder_model: "q8", decoder_model_merged: "q8" };
-      const next = await pipeline2("automatic-speech-recognition", m.repo, { device: g.ok ? "webgpu" : "wasm", dtype, progress_callback });
+      let next, dev = g.ok ? "webgpu" : "wasm";
+      const t0 = performance.now();
+      try {
+        next = await pipeline2("automatic-speech-recognition", m.repo, { device: dev, dtype, progress_callback });
+      } catch (err) {
+        if (dev !== "webgpu" || m.gpuOnly) throw err;
+        console.warn("[verse-catcher] graphics chip failed, using the processor instead:", err);
+        dev = "wasm";
+        gpu = { ok: false, f16: false };
+        post({ type: "phase", text: "Graphics chip unavailable; switching to the processor\u2026" });
+        next = await pipeline2("automatic-speech-recognition", m.repo, { device: "wasm", dtype: { encoder_model: "q8", decoder_model_merged: "q8" }, progress_callback });
+      }
+      console.log("[verse-catcher] model ready on", dev, "in", Math.round(performance.now() - t0), "ms");
+      post({ type: "phase", text: "Warming up\u2026" });
       await next(new Float32Array(SR), m.multilingual ? { language: "en", task: "transcribe" } : {});
+      console.log("[verse-catcher] warm-up done");
       if (asr && asr.dispose) try {
         await asr.dispose();
       } catch (e) {
@@ -34681,7 +34696,7 @@ async function load(name, useMock) {
     }
     model = name;
     loading = null;
-    post({ type: "status", ready: true, model, device: mock ? "mock" : g.ok ? "webgpu" : "wasm", f16: g.f16, vad: vad ? "silero" : "level" });
+    post({ type: "status", ready: true, model, device: mock ? "mock" : gpu.ok ? "webgpu" : "wasm", f16: gpu.f16, vad: vad ? "silero" : "level" });
   } catch (e) {
     loading = null;
     post({ type: "error", message: "Could not load the " + name + " model: " + (e && e.message || e) });
