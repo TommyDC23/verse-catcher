@@ -4,7 +4,7 @@
 // 2. Keeps the site's own files on this computer, so later visits open quickly and the page still opens offline.
 //    Files with a version stamp (?v=...) and the speech engine files never change, so they come straight from the copy.
 //    The page itself is checked online first, so updates appear, with the saved copy as a fallback.
-const CACHE = 'verse-catcher-files-v1';
+const CACHE = 'verse-catcher-files-v1';   // bump to clear every saved file
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil((async () => {
@@ -32,7 +32,7 @@ async function cacheFirst(request) {
 async function networkFirst(request) {
   const cache = await caches.open(CACHE);
   try {
-    const res = await fetch(request);
+    const res = await fetch(request.url, { cache: 'no-cache', credentials: 'same-origin' });   // always ask GitHub if the page changed
     if (res.ok) cache.put(request, res.clone()).catch(() => {});
     return res;
   } catch (e) {
