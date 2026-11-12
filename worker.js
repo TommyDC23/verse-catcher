@@ -34671,7 +34671,7 @@ async function load(name, useMock, override) {
     }
     if (mock) asr = mockAsr();
     else {
-      const dtype = override && override.dtype ? override.dtype : g.ok ? m.gpuOnly ? { encoder_model: "q4", decoder_model_merged: g.f16 ? "q4f16" : "q4" } : { encoder_model: g.f16 ? "fp16" : "fp32", decoder_model_merged: g.f16 ? "q4f16" : "q4" } : { encoder_model: "q8", decoder_model_merged: "q8" };
+      const dtype = override && override.dtype ? override.dtype : g.ok ? m.gpuOnly ? { encoder_model: "q4", decoder_model_merged: "q4" } : { encoder_model: "fp32", decoder_model_merged: "q4" } : { encoder_model: "q8", decoder_model_merged: "q8" };
       let next, dev = override && override.device ? override.device : g.ok ? "webgpu" : "wasm";
       if (dev === "wasm") gpu = { ok: false, f16: false };
       const t0 = performance.now();
@@ -34687,7 +34687,7 @@ async function load(name, useMock, override) {
       }
       console.log("[verse-catcher] model ready on", dev, "in", Math.round(performance.now() - t0), "ms");
       post({ type: "phase", text: "Warming up\u2026" });
-      await next(new Float32Array(SR), m.multilingual ? { language: "en", task: "transcribe" } : {});
+      await next(new Float32Array(SR), Object.assign({ max_new_tokens: 4 }, m.multilingual ? { language: "en", task: "transcribe" } : {}));
       console.log("[verse-catcher] warm-up done");
       if (asr && asr.dispose) try {
         await asr.dispose();
@@ -34723,7 +34723,10 @@ async function speechProb(frame) {
 }
 async function transcribe(audio, final) {
   const t = performance.now();
-  const opts = MODELS[model] && MODELS[model].multilingual ? { language: "en", task: "transcribe" } : {};
+  const opts = Object.assign(
+    { max_new_tokens: Math.min(180, Math.round(12 + 6 * audio.length / SR)) },
+    MODELS[model] && MODELS[model].multilingual ? { language: "en", task: "transcribe" } : {}
+  );
   const out = await asr(audio, mock ? { final } : opts);
   lastMs = Math.round(performance.now() - t);
   const text = (out.text || "").trim();
@@ -34774,7 +34777,7 @@ async function step() {
       const text = await transcribe(buf.slice(0, end), true);
       dropFront(end);
       if (text) post({ type: "final", text, ms: lastMs });
-    } else if (buf.length - heardAt >= INTERIM_EVERY * SR && lastMs < 2500) {
+    } else if (buf.length - heardAt >= Math.max(INTERIM_EVERY, 2 * lastMs / 1e3) * SR && lastMs < 1500) {
       heardAt = buf.length;
       const text = await transcribe(buf, false);
       if (text) post({ type: "interim", text, ms: lastMs });

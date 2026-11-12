@@ -71,10 +71,9 @@
   </select>
   <select id="mic" class="whisper-only" aria-label="Microphone"><option value="">Microphone: system default</option></select>
   <select id="model" class="whisper-only" aria-label="Whisper model" title="Bigger models hear better but need a stronger computer and a bigger first download">
-    <option value="tiny.en">Model: tiny (fastest, least accurate)</option>
-    <option value="base.en">Model: base (for older computers)</option>
-    <option value="small.en">Model: small (recommended)</option>
-    <option value="large-v3-turbo">Model: large turbo (best with accents; strong computers only)</option>
+    <option value="tiny.en">Model: tiny (fastest, least accurate; ~40–120 MB)</option>
+    <option value="base.en">Model: base (recommended; ~80–210 MB)</option>
+    <option value="small.en">Model: small (more accurate, slower; ~250–590 MB)</option>
   </select>
   <label class="check whisper-only" title="Turn on for a microphone in the room; leave off for a cable from the sound desk"><input type="checkbox" id="cleanup"> Reduce room noise</label>
   <select id="lang" class="browser-only" aria-label="Speech accent">
@@ -384,7 +383,7 @@
   let worker = null, wInfo = { ready: false, loading: null, model: null, device: null }, wProgress = null, wPhase = null, wError = null, audio = null, playing = null;
   function ensureWorker() {
     if (worker) return worker;
-    worker = new Worker('worker.js?v=b0349841', { type: 'module' });
+    worker = new Worker('worker.js?v=7bfc7584', { type: 'module' });
     worker.onmessage = (e) => {
       const m = e.data;
       if (m.type === 'status') {
@@ -615,7 +614,7 @@
   $('mic').onchange = () => { store.set('mic', $('mic').value); if (engine() === 'whisper') restartIfListening(); };
   $('cleanup').checked = store.get('cleanup', '0') === '1';
   $('cleanup').onchange = () => { store.set('cleanup', $('cleanup').checked ? '1' : '0'); if (engine() === 'whisper') restartIfListening(); };
-  $('model').value = store.get('model', navigator.gpu ? 'small.en' : 'base.en');
+  $('model').value = ['tiny.en', 'base.en', 'small.en'].includes(store.get('model', '')) ? store.get('model', '') : 'base.en';
   $('model').onchange = () => loadModel($('model').value);
   if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) navigator.mediaDevices.addEventListener('devicechange', listDevices);
   listDevices();
