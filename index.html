@@ -718,11 +718,17 @@
   $('onlineBtn').onclick = () => { $('onlineRow').hidden = !$('onlineRow').hidden; if (!$('onlineRow').hidden) $('apikey').focus(); };
   $('apiSave').onclick = () => connectOnline(false);
   $('apikey').addEventListener('keydown', (e) => { if (e.key === 'Enter') connectOnline(false); e.stopPropagation(); });
-  const setupKey = (location.hash.match(/^#setup=([A-Za-z0-9_-]{8,})$/) || [])[1];
-  if (setupKey) {
-    store.set('apikey', setupKey);
-    history.replaceState(null, '', location.pathname + location.search);
-  }
+  const readSetup = () => {
+    const key = (location.hash.match(/^#setup=([A-Za-z0-9_-]{8,})$/) || [])[1];
+    if (key) { store.set('apikey', key); history.replaceState(null, '', location.pathname + location.search); }
+    return key;
+  };
+  const setupKey = readSetup();
+  window.addEventListener('hashchange', () => {      // the link opened in a tab that already had the page
+    if (!readSetup()) return;
+    $('apikey').value = store.get('apikey', '');
+    connectOnline(false).then(() => { if (Object.keys(online).length) $('apiStatus').textContent = 'Online Bibles are now set up on this computer (' + Object.keys(online).join(', ') + '). You will not need the key here again.'; });
+  });
   $('apiLink').onclick = async () => {
     const key = $('apikey').value.trim() || store.get('apikey', '');
     if (!key) { $('apiStatus').textContent = 'Paste the key and press Connect first.'; return; }
